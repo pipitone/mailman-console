@@ -16,20 +16,32 @@ def print_messages(r):
 
 def list_members(url, credentials):
   """Fetch members of the list located at url"""
-  def fullname_tags(tag):
+  def fullname_tag(tag):
     return tag.name == 'input' and \
            tag.has_attr('name') and \
            tag.attrs['name'].endswith('realname')
 
-  r = requests.post(url + "/members/list", data=credentials)
+  def page_url_tag(tag): 
+    return tag.name == 'a' and \
+           tag.has_attr('href') and \
+           tag.attrs['href'][:-1].endswith('members?letter=')
+
+  list_url = url + "/members/list"
+  r = requests.post(list_url, data=credentials)
   soup = bs4.BeautifulSoup(r.text)
-  tags = soup.find_all(fullname_tags)
+
+  # if the lists page doesn't have links to other pages, then just scrape it
+  pages = [t.attrs['href'] for t in soup.find_all(page_url_tag)] or [list_url]
 
   members = {}
-  for tag in tags:
-    realname = tag.attrs['value']
-    email    = urllib.unquote(tag.attrs['name'][:-len('_realname')])
-    members[email] = realname
+  for page in pages:
+    r = requests.post(page, data=credentials)
+    soup = bs4.BeautifulSoup(r.text)
+    tags = soup.find_all(fullname_tag)
+    for tag in tags:
+      realname = tag.attrs['value']
+      email    = urllib.unquote(tag.attrs['name'][:-len('_realname')])
+      members[email] = realname
   return members
 
 def add_members(url, credentials, emails, invite = False, invitation = "", \
