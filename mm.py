@@ -25,23 +25,38 @@ def list_members(url, credentials):
     return tag.name == 'a' and \
            tag.has_attr('href') and \
            tag.attrs['href'][:-1].endswith('members?letter=')
+  
+  def chunk_url_tag(tag):
+    return tag.name == 'a' and \
+           tag.has_attr('href') and \
+           'chunk' in tag.attrs['href']
 
-  list_url = url + "/members/list"
+  list_url = url + "/members/list?letter=0"
   r = requests.post(list_url, data=credentials)
   soup = bs4.BeautifulSoup(r.text)
 
   # if the lists page doesn't have links to other pages, then just scrape it
   pages = [t.attrs['href'] for t in soup.find_all(page_url_tag)] or [list_url]
 
+  # each page for a letter can, itself, be paginated into "chunks".
+  # the bottom of each page has links to chunks >= 1
   members = {}
   for page in pages:
-    r = requests.post(page, data=credentials)
-    soup = bs4.BeautifulSoup(r.text)
-    tags = soup.find_all(fullname_tag)
-    for tag in tags:
-      realname = tag.attrs['value']
-      email    = urllib.unquote(tag.attrs['name'][:-len('_realname')])
-      members[email] = realname
+    chunk = 0
+    maxchunk = 0
+    while chunk <= maxchunk:
+      chunk_url = page + "&chunk=" + str(chunk)
+      r    = requests.post(chunk_url, data=credentials)
+      soup = bs4.BeautifulSoup(r.text)
+      tags = soup.find_all(fullname_tag)
+      for tag in tags:
+        realname = tag.attrs['value']
+        email    = urllib.unquote(tag.attrs['name'][:-len('_realname')])
+        members[email] = realname
+
+      chunk += 1
+      chunks = soup.find_all(chunk_url_tag)
+      maxchunk = max([int(c.attrs['href'].split("=")[-1]) for c in chunks]+[0])
   return members
 
 def add_members(url, credentials, emails, invite = False, invitation = "", \
