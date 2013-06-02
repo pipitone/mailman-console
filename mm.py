@@ -103,7 +103,7 @@ if __name__ == '__main__':
   if 'list' in args.command:
     members = list_members(args.url, credentials)
     for e,f in members.iteritems():
-      print "%s <%s>" % (e,f)
+      print "%s <%s>" % (f,e)
   if 'add' in args.command: 
     add_members(args.url, credentials, args.email)
   if 'remove' in args.command: 
