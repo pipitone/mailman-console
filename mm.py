@@ -12,15 +12,76 @@ DEFAULT_SECTION = "Defaults"  # Name of defaults section in config file.
                               # only supplies default values to be used in other
                               # sections. 
 
-def print_messages(r): 
-  """Print any messages returned by mailman after an operation"""
-  soup = bs4.BeautifulSoup(r.text)
-  messages = soup.body.findChildren('h5')
-  for message in messages:
-    print message.get_text()
-    ul = message.find_next_sibling('ul')
-    if ul: 
-      print ul.get_text()
+def main():
+  """Main driver."""
+  # argparse/ConfigParse integration approach via: 
+  # http://blog.vwelch.com/2011/04/combining-configparser-and-argparse.html
+  conf_parser = argparse.ArgumentParser(add_help = False)
+  conf_parser.add_argument("-c", "--conf_file", 
+      help = "Specify config file (defaults to ~/.mm.conf)", metavar="FILE")
+  conf_parser.add_argument("-a", "--account_name", 
+      help = "Account name (settings loaded from config file section similarly named)")
+  args, remaining_argv = conf_parser.parse_known_args()
+  defaults = load_config(args.conf_file, args.account_name) 
+  
+  parser = argparse.ArgumentParser(
+      parents = [conf_parser],
+      description = "Interact with the Mailman web UI")
+  parser.set_defaults(**defaults)
+  parser.add_argument('command', choices=['list', 'add', 'remove'], help="command")
+  parser.add_argument('email', help='email address', nargs='*')
+  parser.add_argument('-u', '--url',
+      help = "base url to mailman instances. e.g. %s" % 
+      'http://lists.example.org/admin.cgi/examplelist')
+  parser.add_argument('--url_template',
+      help = "templates for the base url with *s in place of list name e.g. %s" % 
+      'http://lists.example.org/admin.cgi/*s-example.org')
+  parser.add_argument('-l', '--list_name',
+      help = "to be used in combination with --url_template")
+  parser.add_argument('-p', '--password')
+  args = parser.parse_args(remaining_argv)
+
+  credentials = {"admlogin":"Let me in...", "adminpw":args.password}
+
+  if args.url_template:  #TODO: can argparse handle these dependencies?
+    assert args.url is None
+    assert args.list_name
+    args.url = args.url_template.replace('*s', args.list_name)
+
+  assert args.url is not None
+
+  # execute commands
+  if 'list' in args.command:
+    members = list_members(args.url, credentials)
+    for e,f in members.iteritems():
+      print "%s <%s>" % (f,e)
+
+  if 'add' in args.command: 
+    add_members(args.url, credentials, args.email)
+
+  if 'remove' in args.command: 
+    remove_members(args.url, credentials, args.email)
+
+def load_config(config_file, account_name):
+  if config_file:
+    assert os.path.exists(config_file)  #TODO: friendly message
+  else: 
+    config_file = os.path.expanduser("~/.mm.conf")
+    if not os.path.exists(config_file):
+      return {}
+
+  options = {}
+  config = ConfigParser.SafeConfigParser()
+  config.read([config_file])
+
+  if config.has_section(DEFAULT_SECTION): 
+    options.update(config.items(DEFAULT_SECTION))
+
+  if account_name:
+    assert config.has_section(account_name)
+    options.update(config.items(account_name))
+
+  return options
 
 def list_members(url, credentials):
   """Fetch members of the list located at url"""
@@ -96,67 +157,15 @@ def remove_members(url, credentials, emails, ack = False, notify_owner = False):
   r = requests.post(url + "/members/remove", data=payload)
   print_messages(r)
 
-def load_config(config_file, account_name):
-  if config_file:
-    assert os.path.exists(config_file)  #TODO: friendly message
-  else: 
-    config_file = os.path.expanduser("~/.mm.conf")
-    if not os.path.exists(config_file):
-      return {}
-
-  options = {}
-  config = ConfigParser.SafeConfigParser()
-  config.read([config_file])
-
-  if config.has_section(DEFAULT_SECTION): 
-    options.update(config.items(DEFAULT_SECTION))
-
-  if account_name:
-    assert config.has_section(account_name)
-    options.update(config.items(account_name))
-
-  return options
+def print_messages(r): 
+  """Print any messages returned by mailman after an operation"""
+  soup = bs4.BeautifulSoup(r.text)
+  messages = soup.body.findChildren('h5')
+  for message in messages:
+    print message.get_text()
+    ul = message.find_next_sibling('ul')
+    if ul: 
+      print ul.get_text()
 
 if __name__ == '__main__':
-  # argparse/ConfigParse integration approach via: 
-  # http://blog.vwelch.com/2011/04/combining-configparser-and-argparse.html
-  conf_parser = argparse.ArgumentParser(add_help = False)
-  conf_parser.add_argument("-c", "--conf_file", 
-      help = "Specify config file (defaults to ~/.mm.conf)", metavar="FILE")
-  conf_parser.add_argument("-a", "--account_name", 
-      help = "Account name (settings loaded from config file section similarly named)")
-  args, remaining_argv = conf_parser.parse_known_args()
-  defaults = load_config(args.conf_file, args.account_name) 
-  
-  parser = argparse.ArgumentParser(
-      parents = [conf_parser],
-      description = "Interact with the Mailman web UI")
-  parser.set_defaults(**defaults)
-  parser.add_argument('command', choices=['list', 'add', 'remove'], help="command")
-  parser.add_argument('email', help='email address', nargs='*')
-  parser.add_argument('-u', '--url',
-      help = "base url to mailman instances. e.g. %s" % 
-      'http://lists.example.org/admin.cgi/examplelist')
-  parser.add_argument('--url_template',
-      help = "templates for the base url with *s in place of list name e.g. %s" % 
-      'http://lists.example.org/admin.cgi/*s-example.org')
-  parser.add_argument('-l', '--list_name',
-      help = "to be used in combination with --url_template")
-  parser.add_argument('-p', '--password')
-  args = parser.parse_args(remaining_argv)
-
-  if args.url_template:  #TODO: can argparse handle these dependencies?
-    assert args.url is None
-    assert args.list_name
-    args.url = args.url_template.replace('*s', args.list_name)
-
-  credentials = {"admlogin":"Let me in...", "adminpw":args.password}
-
-  if 'list' in args.command:
-    members = list_members(args.url, credentials)
-    for e,f in members.iteritems():
-      print "%s <%s>" % (f,e)
-  if 'add' in args.command: 
-    add_members(args.url, credentials, args.email)
-  if 'remove' in args.command: 
-    remove_members(args.url, credentials, args.email)
+  main()
