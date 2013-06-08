@@ -4,15 +4,31 @@ import bs4
 import urllib
 import argparse
 
-def print_messages(r): 
-  """Print any messages returned by mailman after an operation"""
-  soup = bs4.BeautifulSoup(r.text)
-  messages = soup.body.findChildren('h5')
-  for message in messages:
-    print message.get_text()
-    ul = message.find_next_sibling('ul')
-    if ul: 
-      print ul.get_text()
+def main():
+  """Main driver."""
+  parser = argparse.ArgumentParser(description = "Interact with the Mailman web UI")
+  parser.add_argument('command', choices=['list', 'add', 'remove'], help="command")
+  parser.add_argument('email', help='email address', nargs='*')
+  parser.add_argument('-u', '--url', required = True,
+      help = "base url to mailman instances. e.g. %s" % 
+      'http://lists.example.org/admin.cgi/examplelist')
+  parser.add_argument('-p', '--password', required = True)
+  args = parser.parse_args()
+
+  credentials = {"admlogin":"Let me in...", "adminpw":args.password}
+
+  actual_url = hack_url(args.url)
+
+  if 'list' in args.command:
+    members = list_members(actual_url, credentials)
+    for e,f in members.iteritems():
+      print "%s <%s>" % (f,e)
+
+  if 'add' in args.command: 
+    add_members(actual_url, credentials, args.email)
+
+  if 'remove' in args.command: 
+    remove_members(actual_url, credentials, args.email)
 
 def list_members(url, credentials):
   """Fetch members of the list located at url"""
@@ -88,23 +104,22 @@ def remove_members(url, credentials, emails, ack = False, notify_owner = False):
   r = requests.post(url + "/members/remove", data=payload)
   print_messages(r)
 
+def hack_url(original):
+  """Modify the URL so that the command-line can be shorter."""
+  if original.startswith('http'):
+    return original
+  modified = original[0].upper() + original[1:]
+  return 'http://lists.software-carpentry.org/admin.cgi/%s-software-carpentry.org' % modified
+
+def print_messages(r): 
+  """Print any messages returned by mailman after an operation"""
+  soup = bs4.BeautifulSoup(r.text)
+  messages = soup.body.findChildren('h5')
+  for message in messages:
+    print message.get_text()
+    ul = message.find_next_sibling('ul')
+    if ul: 
+      print ul.get_text()
+
 if __name__ == '__main__':
-  parser = argparse.ArgumentParser(description = "Interact with the Mailman web UI")
-  parser.add_argument('command', choices=['list', 'add', 'remove'], help="command")
-  parser.add_argument('email', help='email address', nargs='*')
-  parser.add_argument('-u', '--url', required = True,
-      help = "base url to mailman instances. e.g. %s" % 
-      'http://lists.example.org/admin.cgi/examplelist')
-  parser.add_argument('-p', '--password', required = True)
-  args = parser.parse_args()
-
-  credentials = {"admlogin":"Let me in...", "adminpw":args.password}
-
-  if 'list' in args.command:
-    members = list_members(args.url, credentials)
-    for e,f in members.iteritems():
-      print "%s <%s>" % (f,e)
-  if 'add' in args.command: 
-    add_members(args.url, credentials, args.email)
-  if 'remove' in args.command: 
-    remove_members(args.url, credentials, args.email)
+  main()
