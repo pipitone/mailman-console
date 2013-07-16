@@ -43,8 +43,8 @@ def main():
 
   credentials = {"admlogin":"Let me in...", "adminpw":args.password}
 
-  if args.url_template:  #TODO: can argparse handle these dependencies?
-    assert args.url is None
+  if args.url is None: 
+    assert args.url_template 
     assert args.list_name
     args.url = args.url_template.replace('*s', args.list_name)
 
