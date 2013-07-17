@@ -5,12 +5,16 @@ import urllib
 import argparse
 import ConfigParser
 import os.path
+import logging
 
 DEFAULT_SECTION = "Defaults"  # Name of defaults section in config file.
                               # This section gets explicitly loaded always,
                               # unlike the ConfigParser's DEFAULT section which
                               # only supplies default values to be used in other
                               # sections. 
+
+logging.basicConfig(format='%(levelname)s: %(message)s')
+logger = logging.getLogger(__name__)
 
 def main():
   """Main driver."""
@@ -39,6 +43,7 @@ def main():
   parser.add_argument('-l', '--list_name',
       help = "to be used in combination with --url_template")
   parser.add_argument('-p', '--password')
+  parser.add_argument('-v', '--verbose', action='store_true')
   args = parser.parse_args(remaining_argv)
 
   credentials = {"admlogin":"Let me in...", "adminpw":args.password}
@@ -49,6 +54,9 @@ def main():
     args.url = args.url_template.replace('*s', args.list_name)
 
   assert args.url is not None
+
+  if args.verbose:
+    logger.setLevel(logging.DEBUG)
 
   # execute commands
   if 'list' in args.command:
@@ -106,6 +114,7 @@ def list_members(url, credentials):
 
   # if the lists page doesn't have links to other pages, then just scrape it
   pages = [t.attrs['href'] for t in soup.find_all(page_url_tag)] or [list_url]
+  logger.debug("Found the following pages of emails: \n - " + "\n - ".join(pages))
 
   # each page for a letter can, itself, be paginated into "chunks".
   # the bottom of each page has links to chunks >= 1
@@ -115,6 +124,7 @@ def list_members(url, credentials):
     maxchunk = 0
     while chunk <= maxchunk:
       chunk_url = page + "&chunk=" + str(chunk)
+      logger.debug('Inspecting mailman url: {0}'.format(chunk_url))
       r    = requests.post(chunk_url, data=credentials)
       soup = bs4.BeautifulSoup(r.text)
       tags = soup.find_all(fullname_tag)
@@ -122,6 +132,7 @@ def list_members(url, credentials):
         realname = tag.attrs['value']
         email    = urllib.unquote(tag.attrs['name'][:-len('_realname')])
         members[email] = realname
+      logger.debug('Found {0} emails'.format(len(tags)))
 
       chunk += 1
       chunks = soup.find_all(chunk_url_tag)
